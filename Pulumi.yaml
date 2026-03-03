@@ -2,6 +2,32 @@ name: pulumi-review-stack-demo
 runtime: nodejs
 main: index.ts
 description: Simple Pulumi Review Stacks Demo
+
 environment:
-  imports:
-    - easyclaim/sandbox
+  - easyclaim/sandbox
+
+# Pulumi Deployments Configuration
+deployments:
+  # Main branch = production stack
+  main:
+    sourceContext:
+      github:
+        repository: Dkn-schnz-priv/pulumi-review-stack-demo-new
+        branch: refs/heads/main
+    operation:
+      type: update
+      options:
+        skipInstallDependencies: false
+  
+  # Pull request review stacks
+  pull_request:
+    sourceContext:
+      github:
+        repository: Dkn-schnz-priv/pulumi-review-stack-demo-new
+        pullRequest: true
+    operation:
+      type: update
+      options:
+        skipInstallDependencies: false
+    destroyOnFinalize: true  # Auto-cleanup when PR closes
+
