@@ -7,3 +7,4 @@ deploy.zip
 .env
 .vscode/
 *.endpointdlp
+*Zone.Identifier
