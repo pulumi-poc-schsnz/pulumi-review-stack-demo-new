@@ -1,4 +1,4 @@
-name: Pulumi Node Review Stack Demo
+name: Pulumi Deployments - Review Stacks
 
 on:
   push:
@@ -16,51 +16,19 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      id-token: write
       contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # Trigger Pulumi Deployment for production
+      - name: Deploy to Production using Pulumi Deployments
+        uses: pulumi/deployments-action@v1
         with:
-          node-version: '18'
-
-      - run: npm install
-
-      # 🔐 Azure Login FIRST (OIDC)
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: 251ce246-3edb-4fd8-862c-61bc600a9e00
-          tenant-id: a97525bd-1b70-4278-b9c6-0e9ba38a6add
-          subscription-id: aa6feafd-ea7f-44ac-9263-9d064ebae6f4
-
-      # 🔍 Validate Login
-      - name: Check Azure Login
-        run: az account show
-
-      # 🏗 Deploy Infrastructure
-      - uses: pulumi/actions@v5
-        with:
-          command: up
-          stack-name: prod
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          NODE_OPTIONS: "--max-old-space-size=4096"
-
-      # 📦 Deploy Application Code
-      - name: Deploy app to Azure Web App
-        run: |
-          RG_NAME=$(pulumi stack output resourceGroupName -s prod)
-          APP_NAME=$(pulumi stack output name -s prod)
-
-          zip -r app.zip server.js package.json
-
-          az webapp deployment source config-zip \
-            --resource-group "$RG_NAME" \
-            --name "$APP_NAME" \
-            --src app.zip
+          stack-name: Devikakrish/pulumi-review-stack-demo/prod
+          operation: up
+          upsert: false
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
@@ -72,78 +40,41 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      id-token: write
       contents: read
+      id-token: write
       pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # Deploy PR review stack using Pulumi Deployments
+      - name: Deploy Review Stack
+        id: pulumi_deploy
+        uses: pulumi/deployments-action@v1
         with:
-          node-version: '18'
-
-      - run: npm install
-
-      # 🔐 Azure Login (OIDC)
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: 251ce246-3edb-4fd8-862c-61bc600a9e00
-          tenant-id: a97525bd-1b70-4278-b9c6-0e9ba38a6add
-          subscription-id: aa6feafd-ea7f-44ac-9263-9d064ebae6f4
-
-      # 🔍 Validate Login
-      - name: Check Azure Login
-        run: az account show
-
-      # 🏗 Create / Update PR Stack (skip refresh for speed)
-      - uses: pulumi/actions@v5
-        with:
-          command: up
-          stack-name: pr-${{ github.event.pull_request.number }}
+          stack-name: Devikakrish/pulumi-review-stack-demo/pr-${{ github.event.pull_request.number }}
+          operation: up
           upsert: true
-          args: --refresh=false
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          NODE_OPTIONS: "--max-old-space-size=4096"
-
-      # 📦 Deploy App Code
-      - name: Deploy app to Azure Web App
-        run: |
-          STACK=pr-${{ github.event.pull_request.number }}
-
-          RG_NAME=$(pulumi stack output resourceGroupName -s $STACK)
-          APP_NAME=$(pulumi stack output name -s $STACK)
-
-          zip -r app.zip server.js package.json
-
-          az webapp deployment source config-zip \
-            --resource-group "$RG_NAME" \
-            --name "$APP_NAME" \
-            --src app.zip
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
 
-      # 🔗 Get PR Stack URL
-      - id: outputs
-        run: |
-          STACK=pr-${{ github.event.pull_request.number }}
-          echo "url=$(pulumi stack output url -s $STACK)" >> $GITHUB_OUTPUT
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
-      # 💬 Comment on PR with Review Stack URL
+      # Comment on PR with deployment details
       - uses: actions/github-script@v7
+        if: steps.pulumi_deploy.outputs.url
         with:
           script: |
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '## 🚀 Review Stack Ready\n\n🔗 **Preview URL:** ${{ steps.outputs.outputs.url }}\n\nThis environment is isolated from production.'
+              body: `## 🚀 Review Stack Ready
+            
+            🔗 **Preview URL:** ${{ steps.pulumi_deploy.outputs.url }}
+            📊 **Deployment:** [View in Pulumi Console](https://app.pulumi.com/Devikakrish/pulumi-review-stack-demo/pr-${{ github.event.pull_request.number }})
+            
+            This environment is isolated from production and will be automatically cleaned up when the PR is closed.`
             })
-  #Testing comment
+
   # =========================
   # 🧹 Cleanup After PR Closed
   # =========================
@@ -152,39 +83,34 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      id-token: write
       contents: read
+      id-token: write
       pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # Destroy review stack using Pulumi Deployments
+      - name: Destroy Review Stack
+        uses: pulumi/deployments-action@v1
         with:
-          node-version: '18'
-
-      - run: npm install
-
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: 251ce246-3edb-4fd8-862c-61bc600a9e00
-          tenant-id: a97525bd-1b70-4278-b9c6-0e9ba38a6add
-          subscription-id: aa6feafd-ea7f-44ac-9263-9d064ebae6f4
-
-      - uses: pulumi/actions@v5
-        with:
-          command: destroy
-          stack-name: pr-${{ github.event.pull_request.number }}
+          stack-name: Devikakrish/pulumi-review-stack-demo/pr-${{ github.event.pull_request.number }}
+          operation: destroy
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         continue-on-error: true
 
-      - run: pulumi stack rm pr-${{ github.event.pull_request.number }} --yes
+      # Remove the stack
+      - name: Remove Stack
+        uses: pulumi/deployments-action@v1
+        with:
+          stack-name: Devikakrish/pulumi-review-stack-demo/pr-${{ github.event.pull_request.number }}
+          operation: remove
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         continue-on-error: true
 
+      # Notify cleanup completion
       - uses: actions/github-script@v7
         with:
           script: |
@@ -192,5 +118,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '## 🧹 Review Stack Cleaned Up\n\nResources destroyed and stack removed.'
+              body: '## 🧹 Review Stack Cleaned Up\n\nResources destroyed and stack removed via Pulumi Deployments.'
             });
